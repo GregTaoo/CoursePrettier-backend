@@ -1,16 +1,15 @@
-import uuid
+import base64
 import os
 
-import json
+from fastapi import FastAPI, HTTPException, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from ShanghaiTechOneAPI.Credential import Credential
-from ShanghaiTechOneAPI.Eams import Eams, CourseCalender
+from ShanghaiTechOneAPI.Eams import Eams
 from timetable import ICS_Exporter
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 
 class LoginParams(BaseModel):
     userID: str
@@ -20,7 +19,7 @@ app = FastAPI()
 
 origins = [
     "http://localhost:3000",
-    "http://10.20.223.223:3000"
+    "http://localhost:8000"
 ]
 
 app.add_middleware(
@@ -31,55 +30,84 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+def return_message(success: bool, message: str=None) -> dict:
+    return {
+        "isSuccess": success,
+        "message": message
+    } if message is not None else {
+        "isSuccess": success
+    }
+
 @app.post("/api/login")
-async def login(params: LoginParams):
-    userID = params.userID
-    password = params.password
+async def login(params: LoginParams, response: Response):
+    user_id, password = params.userID, params.password
     try:
-        int(userID)
+        int(user_id)
     except ValueError:
-        return {
-            "isSuccess": False,
-            "message": "Invalid userid"
-        }
-    job_id = str(uuid.uuid4())
-    home_dir = os.path.join('./data', job_id)
-    table_file = os.path.join(home_dir, 'courseinfo.json')
+        return return_message(False, "Invalid UserID")
     try:
-        async with Credential(userID) as cred:
+        async with Credential(user_id) as cred:
             await cred.login(password)
             eams = Eams(cred)
             await eams.login()
-            cc = CourseCalender(eams)
-            os.makedirs(home_dir, exist_ok=True)
-            await cc.get_courseinfo(
-                output_file=table_file,
-                work_dir=home_dir
-            )
+            if cred.is_login:
+                cookie_str = ''
+                for cookie in cred.session.cookie_jar:
+                    cookie_str += base64.b64encode(cookie.__str__().encode("utf-8")).decode("utf-8") + ':'
+                response.set_cookie('LOGIN_SESSION', cookie_str, max_age=7776000)
+                return return_message(True)
     except Exception as e:
-        return {
-            "isSuccess": False,
-            "message": str(e)
-        }
+        return return_message(False, str(e))
 
-    if not os.path.exists(table_file):
-        return {
-            "isSuccess": False,
-            "message": "Table not found",
-        }
-    try:
-        with open(table_file, 'r', encoding='utf-8') as f:
-            return {
-                "isSuccess": True,
-                "message": "OK",
-                "id": job_id,
-                "table": json.load(f)
-            }
-    except Exception as e:
-        return {
-            "isSuccess": False,
-            "message": str(e)
-        }
+# @app.post("/api/login")
+# async def login(params: LoginParams):
+#     user_id = params.userID
+#     password = params.password
+#     try:
+#         int(user_id)
+#     except ValueError:
+#         return {
+#             "isSuccess": False,
+#             "message": "Invalid userid"
+#         }
+#     job_id = str(uuid.uuid4())
+#     home_dir = os.path.join('./data', job_id)
+#     table_file = os.path.join(home_dir, 'courseinfo.json')
+#     try:
+#         async with Credential(user_id) as cred:
+#             await cred.login(password)
+#             eams = Eams(cred)
+#             await eams.login()
+#             cc = CourseCalender(eams)
+#             os.makedirs(home_dir, exist_ok=True)
+#             await cc.get_courseinfo(
+#                 output_file=table_file,
+#                 work_dir=home_dir
+#             )
+#     except Exception as e:
+#         return {
+#             "isSuccess": False,
+#             "message": str(e)
+#         }
+#
+#     if not os.path.exists(table_file):
+#         return {
+#             "isSuccess": False,
+#             "message": "Table not found",
+#         }
+#     try:
+#         with open(table_file, 'r', encoding='utf-8') as f:
+#             return {
+#                 "isSuccess": True,
+#                 "message": "OK",
+#                 "id": job_id,
+#                 "table": json.load(f)
+#             }
+#     except Exception as e:
+#         return {
+#             "isSuccess": False,
+#             "message": str(e)
+#         }
 
 @app.get("/api/ics")
 async def get_ics(id: str):

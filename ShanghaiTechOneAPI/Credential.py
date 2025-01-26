@@ -1,18 +1,15 @@
 import asyncio
 import base64
+import pickle
 import random
 from typing import Tuple
 
 import aiohttp
-import Crypto
 from Crypto.Cipher import AES
 from Crypto.Util import Padding
 from aiohttp import ClientSession, CookieJar, TCPConnector
-
 from aiohttp.resolver import AsyncResolver
 from bs4 import BeautifulSoup
-
-import pickle
 
 from ShanghaiTechOneAPI.Exception import UsernameOrPasswordError
 
