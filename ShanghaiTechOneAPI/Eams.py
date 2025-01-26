@@ -60,6 +60,7 @@ class CourseCalender:
         for tag in script_tags:
             match = re.search("bg.form.addInput\(form,\"ids\",\"\d+\"\)", tag.text)
             if match:
+                print(match.group(0).split('"')[-2])
                 return match.group(0).split('"')[-2]
         raise ValueError("Cannot find table id")
 
@@ -71,8 +72,10 @@ class CourseCalender:
         script_file = os.path.join(work_dir, 'courseinfo.js')
         merged_file = os.path.join(work_dir, 'merged.js')
 
-        async with self.session.post(f"https://eams.shanghaitech.edu.cn/eams/courseTableForStd!courseTable.action?ignoreHead=1&setting.kind=std&startWeek=&semester.id=203&ids={table_id}&tutorRedirectstudentId={table_id}") as response:
-            table_soup = BeautifulSoup(await response.read(), 'html.parser')
+        semester_id = 243 # 2024-2025第二学期
+        async with self.session.post(f"https://eams.shanghaitech.edu.cn/eams/courseTableForStd!courseTable.action?ignoreHead=1&setting.kind=std&startWeek=&semester.id={semester_id}&ids={table_id}&tutorRedirectstudentId={table_id}") as response:
+            s = await response.read()
+            table_soup = BeautifulSoup(s, 'html.parser')
             with open(script_file, "w", encoding='utf-8') as f:
                 f.write(table_soup.find_all("script")[-2].text)
 

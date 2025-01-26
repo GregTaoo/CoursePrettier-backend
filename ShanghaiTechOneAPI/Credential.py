@@ -4,6 +4,7 @@ import random
 from typing import Tuple
 
 import aiohttp
+import Crypto
 from Crypto.Cipher import AES
 from Crypto.Util import Padding
 from aiohttp import ClientSession, CookieJar, TCPConnector
@@ -106,8 +107,7 @@ class Credential:
         }
         async with self.session.post("https://ids.shanghaitech.edu.cn/authserver/login", data=data):
             cookies = list(self.session.cookie_jar)
-            if len(list(filter(lambda cookie: cookie.key == 'CASTGC', cookies))) == 0 or \
-                    len(list(filter(lambda cookie: cookie.key == 'happyVoyagePersonal', cookies))) == 0:
+            if len(list(filter(lambda cookie: cookie.key == 'CASTGC', cookies))) == 0:
                 raise UsernameOrPasswordError()
             else:
                 self.is_login = True

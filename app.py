@@ -90,7 +90,7 @@ async def get_ics(id: str):
     if not os.path.exists(table_file):
         return HTTPException(status_code=404, detail="Table not found")
     ics_file = os.path.join(home_dir, 'courseinfo.ics')
-    exporter = ICS_Exporter(start_monday=[2023, 2, 6], calender_name="2022-2023学年2学期")
+    exporter = ICS_Exporter(start_monday=[2025, 2, 17], calender_name="2024-2025学年2学期")
     exporter.parse_json(table_file)
     exporter.export(ics_file)
     return FileResponse(ics_file, media_type="text/calendar", filename="courseinfo.ics")
