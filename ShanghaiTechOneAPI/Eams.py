@@ -1,44 +1,101 @@
-import logging
-import re
-import subprocess
-import shutil
 import os
-from typing import Optional, Dict, Any, List
+import re
+import shutil
+import subprocess
+from typing import Optional
 
-import pyjson5
-from aiohttp import ClientSession, FormData
+from aiohttp import ClientSession
 from bs4 import BeautifulSoup
 
 from ShanghaiTechOneAPI.Credential import Credential
 from ShanghaiTechOneAPI.Exception import FailToLogin
 
+URL = 'https://eams.shanghaitech.edu.cn/eams/'
 
 class Eams:
     """
-    Eams类, 用于进行各种Eams操作
+    Eams 类, 用于进行各种 Eams 操作
     """
 
     def __init__(self, credential: Credential):
         """
-        Eams类 构造函数
+        Eams 类 构造函数
         """
         self.is_login = False
         self.session: ClientSession = credential.session
         self.credential: Credential = credential
 
     async def login(self):
-        content = await self.enter('https://eams.shanghaitech.edu.cn/eams/home.action')
+        content = await self.get(URL + 'home.action')
         content = content.decode('utf-8')
         if content.find('注 销') == -1:
             raise FailToLogin("Eams")
         else:
             self.is_login = True
 
-    async def enter(self, url):
-        async with self.session.get(url) as response:
+    async def get(self, url):
+        async with self.session.get(URL + url) as response:
             content = await response.read()
             return content
 
+    async def post(self, url, payload):
+        async with self.session.post(URL + url, data=payload) as response:
+            content = await response.read()
+            return content
+
+    async def get_semesters(self) -> tuple[dict, str, str]:
+        text = (await self.get("courseTableForStd.action")).decode("utf-8")
+        mystery_id = text.split('"></div>')[0][-11:]
+        default_semester = re.findall(r'\{empty:"false",value:"(\d+)"},"searchTable\(\)"\);', text)[0][0]
+        table_id = CourseCalender.find_table_id(BeautifulSoup(text, 'html.parser'))
+        text = (await self.post('dataQuery.action', {
+            'tagId': f'semesterBar{mystery_id}Semester',
+            'dataType': 'semesterCalendar',
+            'value': 6,
+            'empty': False
+        })).decode("utf-8")
+        matches = re.findall(r'\{id:(\d+),schoolYear:"(\d+-\d+)",name:"(.*?)"}', text)
+        semesters = {}
+        for value in matches:
+            if value[1] in semesters:
+                semesters[value[1]][value[2]] = value[0]
+            else:
+                semesters[value[1]] = {
+                    value[2]: value[0]
+                }
+        return semesters, default_semester, table_id
+
+    async def get_course_table(self, semester_id: str, table_id: str = None, start_week: int = 1):
+        if table_id is None:
+            text = (await self.get("courseTableForStd.action")).decode("utf-8")
+            table_id = CourseCalender.find_table_id(BeautifulSoup(text, 'html.parser'))
+        text = (await self.post(f"courseTableForStd!courseTable.action?ignoreHead=1&setting.kind=std&startWeek={start_week}&semester.id={semester_id}&ids={table_id}&tutorRedirectstudentId={table_id}", {})).decode('utf-8')
+        courses = []
+        for course_str in text.split('var teachers')[1:]:
+            match0 = re.findall(r'\),"[0-9A-Za-z().]+","(.*?\([0-9A-Za-z().]+\))","[\d,]+","(.*?)",', course_str)
+            match1 = re.findall(r'index =(\d+)\*unitCount\+(\d+);', course_str)
+            match2 = re.search(r'var actTeachers = \[(.*?)];', course_str, re.DOTALL)
+            teachers = ''
+            if match2:
+                names = re.findall(r'name:"([^"]+)"', match2.group(1))
+                teachers = ','.join(names)
+            times_dict = {}
+            for value in match1:
+                weekday = int(value[0]) + 1
+                clazz = int(value[1]) + 1
+                if weekday in times_dict:
+                    times_dict[weekday].append(str(clazz))
+                else:
+                    times_dict[weekday] = [str(clazz)]
+            for key in times_dict:
+                times_dict[key] = ','.join(times_dict[key])
+            courses.append({
+                'name': match0[0][0],
+                'classroom': match0[0][1],
+                'teachers': teachers,
+                'times': times_dict
+            })
+        return courses
 
 class CourseCalender:
     def __init__(self, emas: Eams):
@@ -52,10 +109,11 @@ class CourseCalender:
         self.profile_id: Optional[int] = None
         self.credit_limit_for_the_semester: Optional[int] = None
         self.selected_credit: Optional[int] = None
-        self.emas: Eams = emas
+        self.eams: Eams = emas
         self.session = emas.session
-    
-    def find_table_id(self, soup: BeautifulSoup) -> str:
+
+    @staticmethod
+    def find_table_id(soup: BeautifulSoup) -> str:
         script_tags = soup.find_all('script')
         for tag in script_tags:
             match = re.search("bg.form.addInput\(form,\"ids\",\"\d+\"\)", tag.text)
@@ -65,7 +123,7 @@ class CourseCalender:
         raise ValueError("Cannot find table id")
 
     async def get_courseinfo(self, output_file: str, work_dir: str = "./temp/") -> None:
-        eams_content = await self.emas.enter("https://eams.shanghaitech.edu.cn/eams/courseTableForStd.action")
+        eams_content = await self.eams.get("https://eams.shanghaitech.edu.cn/eams/courseTableForStd.action")
         eams_soup = BeautifulSoup(eams_content, 'html.parser')
         table_id = self.find_table_id(eams_soup)
 

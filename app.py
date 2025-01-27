@@ -1,7 +1,10 @@
 import base64
+import json
 import os
+import pickle
+from typing import Tuple, Optional, Union
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -15,11 +18,16 @@ class LoginParams(BaseModel):
     userID: str
     password: str
 
+class CourseTableParams(BaseModel):
+    semester_id: Union[str, int]
+    table_id: Union[str, int] = None
+    start_week: Union[int] = 1
+
 app = FastAPI()
 
 origins = [
     "http://localhost:3000",
-    "http://localhost:8000"
+    "http://127.0.0.1:3000"
 ]
 
 app.add_middleware(
@@ -30,13 +38,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def return_message(success: bool, message: str=None) -> dict:
+def set_cookies(response: Response, cred: Credential, user_id: str):
+    cookie_str = base64.b64encode(pickle.dumps(cred.session.cookie_jar._cookies)).decode("utf-8")
+    response.set_cookie('LOGIN_SESSION', cookie_str, max_age=7776000)
+    response.set_cookie('STUDENT_ID', user_id, max_age=7776000)
+
+def get_cookies(request: Request) -> Tuple[str, str]:
+    user_id = request.cookies.get("STUDENT_ID")
+    cookie_str = request.cookies.get("LOGIN_SESSION")
+    return user_id, cookie_str
+
+def return_message(success: bool, message=None) -> dict:
     return {
         "isSuccess": success,
         "message": message
     } if message is not None else {
         "isSuccess": success
     }
+
+def get_credential(request: Request) -> Optional[Credential]:
+    user_id, cookie_str = get_cookies(request)
+    if user_id and cookie_str:
+        return Credential(user_id, base64.b64decode(cookie_str))
+    else:
+        return None
 
 @app.post("/api/login")
 async def login(params: LoginParams, response: Response):
@@ -51,11 +76,35 @@ async def login(params: LoginParams, response: Response):
             eams = Eams(cred)
             await eams.login()
             if cred.is_login:
-                cookie_str = ''
-                for cookie in cred.session.cookie_jar:
-                    cookie_str += base64.b64encode(cookie.__str__().encode("utf-8")).decode("utf-8") + ':'
-                response.set_cookie('LOGIN_SESSION', cookie_str, max_age=7776000)
+                set_cookies(response, cred, user_id)
                 return return_message(True)
+    except Exception as e:
+        return return_message(False, str(e))
+
+@app.post("/api/semesters")
+async def semesters(request: Request):
+    try:
+        async with get_credential(request) as cred:
+            if cred is None:
+                return return_message(False, 'Please login first')
+            eams = Eams(cred)
+            semesters_dict, default_semester, table_id = await eams.get_semesters()
+            return return_message(True, {
+                "semesters": semesters_dict,
+                "default_semester": default_semester,
+                "table_id": table_id
+            })
+    except Exception as e:
+        return return_message(False, str(e))
+
+@app.post("/api/course_table")
+async def course_table(params: CourseTableParams, request: Request):
+    try:
+        async with get_credential(request) as cred:
+            if cred is None:
+                return return_message(False, 'Please login first')
+            eams = Eams(cred)
+            return return_message(True, await eams.get_course_table(params.semester_id, params.table_id, params.start_week))
     except Exception as e:
         return return_message(False, str(e))
 
@@ -108,18 +157,18 @@ async def login(params: LoginParams, response: Response):
 #             "isSuccess": False,
 #             "message": str(e)
 #         }
-
-@app.get("/api/ics")
-async def get_ics(id: str):
-    if id == "":
-        return HTTPException(status_code=400, detail="Invalid id")
-    home_dir = os.path.join('./data', id)
-    table_file = os.path.join(home_dir, 'courseinfo.json')
-    if not os.path.exists(table_file):
-        return HTTPException(status_code=404, detail="Table not found")
-    ics_file = os.path.join(home_dir, 'courseinfo.ics')
-    exporter = ICS_Exporter(start_monday=[2025, 2, 17], calender_name="2024-2025学年2学期")
-    exporter.parse_json(table_file)
-    exporter.export(ics_file)
-    return FileResponse(ics_file, media_type="text/calendar", filename="courseinfo.ics")
+#
+# @app.get("/api/ics")
+# async def get_ics(id: str):
+#     if id == "":
+#         return HTTPException(status_code=400, detail="Invalid id")
+#     home_dir = os.path.join('./data', id)
+#     table_file = os.path.join(home_dir, 'courseinfo.json')
+#     if not os.path.exists(table_file):
+#         return HTTPException(status_code=404, detail="Table not found")
+#     ics_file = os.path.join(home_dir, 'courseinfo.ics')
+#     exporter = ICS_Exporter(start_monday=[2025, 2, 17], calender_name="2024-2025学年2学期")
+#     exporter.parse_json(table_file)
+#     exporter.export(ics_file)
+#     return FileResponse(ics_file, media_type="text/calendar", filename="courseinfo.ics")
 
