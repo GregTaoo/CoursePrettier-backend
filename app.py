@@ -1,17 +1,13 @@
 import base64
-import json
-import os
 import pickle
 from typing import Tuple, Optional, Union
 
-from fastapi import FastAPI, HTTPException, Response, Request
+from fastapi import FastAPI, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from ShanghaiTechOneAPI.Credential import Credential
 from ShanghaiTechOneAPI.Eams import Eams
-from timetable import ICS_Exporter
 
 
 class LoginParams(BaseModel):
@@ -21,7 +17,7 @@ class LoginParams(BaseModel):
 class CourseTableParams(BaseModel):
     semester_id: Union[str, int]
     table_id: Union[str, int] = None
-    start_week: Union[int] = 1
+    start_week: Union[int] = None
 
 app = FastAPI()
 
