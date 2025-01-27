@@ -71,7 +71,7 @@ class Eams:
                 }
         return semesters, default_semester, table_id
 
-    async def get_course_table(self, semester_id: str, table_id: str = None, start_week: int = None):
+    async def get_course_table(self, semester_id: str, table_id: str = None, start_week: int = None) -> list:
         if table_id is None:
             text = (await self.get("courseTableForStd.action")).decode("utf-8")
             table_id = self.find_table_id(BeautifulSoup(text, 'html.parser'))
