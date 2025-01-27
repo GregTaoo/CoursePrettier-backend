@@ -3,8 +3,8 @@ import re
 from aiohttp import ClientSession
 from bs4 import BeautifulSoup
 
-from ShanghaiTechOneAPI.Credential import Credential
-from ShanghaiTechOneAPI.Exception import FailToLogin
+from IDS.Credential import Credential
+from IDS.Exception import FailToLogin
 
 URL = 'https://eams.shanghaitech.edu.cn/eams/'
 

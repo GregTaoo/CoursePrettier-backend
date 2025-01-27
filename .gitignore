@@ -1,6 +1,6 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
-ShanghaiTechOneAPI/__pycache__
+IDS/__pycache__
 *.py[cod]
 *$py.class
 data/

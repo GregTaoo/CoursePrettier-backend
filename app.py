@@ -6,8 +6,8 @@ from fastapi import FastAPI, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from ShanghaiTechOneAPI.Credential import Credential
-from ShanghaiTechOneAPI.Eams import Eams
+from IDS.Credential import Credential
+from IDS.Eams import Eams
 
 
 class LoginParams(BaseModel):
