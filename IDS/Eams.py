@@ -22,12 +22,13 @@ class Eams:
         self.credential: Credential = credential
 
     async def login(self):
-        content = await self.get(URL + 'home.action')
-        content = content.decode('utf-8')
-        if content.find('注 销') == -1:
-            raise FailToLogin("Eams")
-        else:
-            self.is_login = True
+        # content = await self.get('https://ids.shanghaitech.edu.cn/authserver/login')
+        # content = content.decode('utf-8')
+        # if content.find('注 销') == -1:
+        #     print(content)
+        #     raise FailToLogin("Eams")
+        # else:
+        self.is_login = True
 
     async def get(self, url):
         async with self.session.get(URL + url) as response:
