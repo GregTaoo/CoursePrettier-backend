@@ -4,7 +4,6 @@ from aiohttp import ClientSession
 from bs4 import BeautifulSoup
 
 from IDS.Credential import Credential
-from IDS.Exception import FailToLogin
 
 URL = 'https://eams.shanghaitech.edu.cn/eams/'
 
@@ -46,14 +45,13 @@ class Eams:
         for tag in script_tags:
             match = re.search("bg.form.addInput\(form,\"ids\",\"\d+\"\)", tag.text)
             if match:
-                print(match.group(0).split('"')[-2])
                 return match.group(0).split('"')[-2]
         raise ValueError("Cannot find table id")
 
     async def get_semesters(self) -> tuple[dict, str, str]:
         text = (await self.get("courseTableForStd.action")).decode("utf-8")
         mystery_id = text.split('"></div>')[0][-11:]
-        default_semester = re.findall(r'\{empty:"false",value:"(\d+)"},"searchTable\(\)"\);', text)[0][0]
+        default_semester = re.findall(r'\{empty:"false",value:"(\d+)"},"searchTable\(\)"\);', text)[0]
         table_id = self.find_table_id(BeautifulSoup(text, 'html.parser'))
         text = (await self.post('dataQuery.action', {
             'tagId': f'semesterBar{mystery_id}Semester',
@@ -72,13 +70,20 @@ class Eams:
                 }
         return semesters, default_semester, table_id
 
-    async def get_course_table(self, semester_id: str, table_id: str = None, start_week: int = None) -> list:
+    async def get_course_table(self, semester_id: str, table_id: str = None, start_week: int = None) -> dict:
         if table_id is None:
             text = (await self.get("courseTableForStd.action")).decode("utf-8")
             table_id = self.find_table_id(BeautifulSoup(text, 'html.parser'))
         text = (await self.post(f"courseTableForStd!courseTable.action?ignoreHead=1&setting.kind=std&startWeek={start_week if start_week else ''}&semester.id={semester_id}&ids={table_id}&tutorRedirectstudentId={table_id}", {})).decode('utf-8')
+        course_strs = text.split('var teachers')
+        match_periods = re.findall(r'<br>\s*(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*</font>', course_strs[0])
+        periods = []
+        for i, match_period in enumerate(match_periods):
+            periods.append({
+                i: f'{match_period[0]}-{match_period[1]}'
+            })
         courses = []
-        for course_str in text.split('var teachers')[1:]:
+        for course_str in course_strs[1:]:
             match0 = re.findall(r'\),"[0-9A-Za-z().]+","(.*?\([0-9A-Za-z().]+\))","[\d,]+","(.*?)","([01]+)",', course_str)
             match1 = re.findall(r'index =(\d+)\*unitCount\+(\d+);', course_str)
             match2 = re.search(r'var actTeachers = \[(.*?)];', course_str, re.DOTALL)
@@ -103,7 +108,10 @@ class Eams:
                 'weeks': match0[0][2],
                 'times': times_dict
             })
-        return courses
+        return {
+            'periods': periods,
+            'courses': courses
+        }
 
 # class CourseCalender:
 #     def __init__(self, emas: Eams):
