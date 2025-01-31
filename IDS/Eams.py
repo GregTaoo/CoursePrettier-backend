@@ -4,6 +4,7 @@ from aiohttp import ClientSession
 from bs4 import BeautifulSoup
 
 from IDS.Credential import Credential
+from IDS.Exception import SessionExpiredError
 
 URL = 'https://eams.shanghaitech.edu.cn/eams/'
 
@@ -50,6 +51,9 @@ class Eams:
 
     async def get_semesters(self) -> tuple[dict, str, str]:
         text = (await self.get("courseTableForStd.action")).decode("utf-8")
+        print(text)
+        if text.find('统一身份认证') > 0:
+            raise SessionExpiredError()
         mystery_id = text.split('"></div>')[0][-11:]
         default_semester = re.findall(r'\{empty:"false",value:"(\d+)"},"searchTable\(\)"\);', text)[0]
         table_id = self.find_table_id(BeautifulSoup(text, 'html.parser'))
@@ -73,8 +77,12 @@ class Eams:
     async def get_course_table(self, semester_id: str, table_id: str = None, start_week: int = None) -> dict:
         if table_id is None:
             text = (await self.get("courseTableForStd.action")).decode("utf-8")
+            if text.find('统一身份认证') > 0:
+                raise SessionExpiredError()
             table_id = self.find_table_id(BeautifulSoup(text, 'html.parser'))
         text = (await self.post(f"courseTableForStd!courseTable.action?ignoreHead=1&setting.kind=std&startWeek={start_week if start_week else ''}&semester.id={semester_id}&ids={table_id}&tutorRedirectstudentId={table_id}", {})).decode('utf-8')
+        if text.find('统一身份认证') > 0:
+            raise SessionExpiredError()
         course_strs = text.split('var teachers')
         match_periods = re.findall(r'<br>\s*(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*</font>', course_strs[0])
         periods = []

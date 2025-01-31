@@ -39,3 +39,11 @@ class InvalidRemoteResponse(ApiException):
     def __init__(self, api_name: str, excepted: str, msg: str = "接口{}返回的数据不是期望的数据类型, 期望: {}"):
         self.msg = msg.format(api_name, excepted)
         super().__init__(self.msg)
+
+class SessionExpiredError(ApiException):
+    """
+    登录失效
+    """
+
+    def __init__(self):
+        super().__init__('登录失效')

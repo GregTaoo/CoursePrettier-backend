@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from IDS.Credential import Credential
 from IDS.Eams import Eams
+from IDS.Exception import SessionExpiredError
 
 
 class LoginParams(BaseModel):
@@ -38,6 +39,10 @@ def set_cookies(response: Response, cred: Credential, user_id: str):
     cookie_str = base64.b64encode(pickle.dumps(cred.session.cookie_jar._cookies)).decode("utf-8")
     response.set_cookie('LOGIN_SESSION', cookie_str, max_age=7776000)
     response.set_cookie('STUDENT_ID', user_id, max_age=7776000)
+
+def clear_cookies(response: Response):
+    response.set_cookie('LOGIN_SESSION', '', max_age=0)
+    response.set_cookie('STUDENT_ID', '', max_age=0)
 
 def get_cookies(request: Request) -> Tuple[str, str]:
     user_id = request.cookies.get("STUDENT_ID")
@@ -79,6 +84,17 @@ async def login(params: LoginParams, response: Response):
     except Exception as e:
         return return_message(False, str(e))
 
+@app.post("/api/logout")
+async def logout(request: Request, response: Response):
+    try:
+        async with get_credential(request) as cred:
+            if cred is not None:
+                cred.close()
+            clear_cookies(response)
+            return return_message(True)
+    except Exception as e:
+        return return_message(False, str(e))
+
 @app.post("/api/semesters")
 async def semesters(request: Request):
     try:
@@ -92,6 +108,8 @@ async def semesters(request: Request):
                 "default_semester": default_semester,
                 "table_id": table_id
             })
+    except SessionExpiredError:
+        return return_message(False, 'Session expired')
     except Exception as e:
         return return_message(False, str(e))
 
@@ -103,6 +121,8 @@ async def course_table(params: CourseTableParams, request: Request):
                 return return_message(False, 'Please login first')
             eams = Eams(cred)
             return return_message(True, await eams.get_course_table(params.semester_id, params.table_id, params.start_week))
+    except SessionExpiredError:
+        return return_message(False, 'Session expired')
     except Exception as e:
         return return_message(False, str(e))
 
